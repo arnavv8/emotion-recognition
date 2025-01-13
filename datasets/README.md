@@ -55,7 +55,7 @@ After training, the following metrics will be generated in `server/metrics/`:
 - Training curves
 - Model performance comparisons
 
-## Model Files
+## Model Files.
 
 Trained models will be saved in:
 - `server/models/audio_model.pth`
