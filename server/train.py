@@ -40,16 +40,22 @@ def plot_confusion_matrix(y_true, y_pred, labels, model_type):
     with open(report_path, 'w') as f:
         json.dump(report, f, indent=4)'''
 
+
 def save_classification_report(y_true, y_pred, labels, model_type):
-    print(f"Labels provided to classification_report: {labels}")
-    print(f"Number of unique classes in dataset: {len(set(y_true))}")
 
-    # Ensure only the expected labels are passed
-    report = classification_report(y_true, y_pred, labels=[0,1,2,3,4,5,6], target_names=labels, output_dict=True, zero_division=0)
+    # Ensure labels are converted to a Python list of integers
+    labels = [int(label) for label in labels]  
 
-    report_path = f"{model_type}_classification_report.json"
+    report = classification_report(y_true, y_pred, labels=labels, output_dict=True)
+
+    # Ensure the 'results' directory exists
+    results_dir = "results"
+    os.makedirs(results_dir, exist_ok=True)  # Creates directory if it doesn't exist
+
+    report_path = os.path.join(results_dir, f"classification_report_{model_type}.json")
     with open(report_path, "w") as f:
         json.dump(report, f, indent=4)
+
     print(f"Classification report saved to {report_path}")
 
 
@@ -71,7 +77,6 @@ def evaluate_model(model, test_loader, labels, model_type, device):
     print(f"Unique labels in predictions: {set(all_preds)}")
     print(f"Expected labels: {labels}")
 
-    
     # Generate and save metrics
     plot_confusion_matrix(all_labels, all_preds, labels, model_type)
     save_classification_report(all_labels, all_preds, labels, model_type)
@@ -178,11 +183,6 @@ def train_model(
     plt.legend()
     plt.savefig(os.path.join(metrics_dir, f'{model_type.lower()}_training_curves.png'))
     plt.close()
-
-    print(f"Predictions sample: {all_preds[:10]}")
-    print(f"Labels sample: {all_labels[:10]}")
-    print(f"Expected labels: {labels}")
-
     
     # Load best model and evaluate
     model.load_state_dict(best_model)
