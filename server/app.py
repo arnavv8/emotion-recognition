@@ -3,11 +3,9 @@ from flask_cors import CORS
 import torch
 import tempfile
 import os
-#from config import Config
+from config import Config
 from models.audio_model import AudioEmotionModel
-#from models.video_model import VideoEmotionModel
 from utils.audio_processor import AudioProcessor
-#from utils.video_processor import VideoProcessor
 
 app = Flask(__name__)
 CORS(app, origins=Config.ALLOWED_ORIGINS)
@@ -17,20 +15,13 @@ try:
     audio_model = AudioEmotionModel()
     audio_model.load_state_dict(torch.load(Config.AUDIO_MODEL_PATH))
     audio_model.eval()
-
-    # Commented out video model loading
-    # video_model = VideoEmotionModel()
-    # video_model.load_state_dict(torch.load(Config.VIDEO_MODEL_PATH))
-    # video_model.eval()
 except Exception as e:
-    print(f"Error loading models: {str(e)}")
-    print("Please ensure models are trained before running the server.")
+    print(f"Error loading audio model: {str(e)}")
+    print("Please ensure the model is trained before running the server.")
     exit(1)
 
 # Load audio processor
 audio_processor = AudioProcessor()
-# Commented out video processor
-# video_processor = VideoProcessor()
 
 # Emotion labels
 EMOTIONS = ['angry', 'disgusted', 'fearful', 'happy', 'neutral', 'sad', 'surprised']
@@ -57,7 +48,7 @@ def predict():
         if not is_valid:
             return jsonify({'error': error}), 400
         
-        if media_type != 'audio':  # Only audio processing is enabled
+        if media_type != 'audio':
             return jsonify({'error': 'Only audio processing is enabled'}), 400
         
         # Save file temporarily
@@ -90,38 +81,7 @@ def predict():
 # Commented out video processing
 # @app.route('/predict-frame', methods=['POST'])
 # def predict_frame():
-#     try:
-#         if 'frame' not in request.files:
-#             return jsonify({'error': 'No frame provided'}), 400
-        
-#         frame_file = request.files['frame']
-        
-#         # Validate frame
-#         is_valid, error = validate_file(frame_file)
-#         if not is_valid:
-#             return jsonify({'error': error}), 400
-        
-#         # Convert to numpy array
-#         nparr = np.frombuffer(frame_file.read(), np.uint8)
-#         frame = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
-        
-#         if frame is None:
-#             return jsonify({'error': 'Invalid frame data'}), 400
-        
-#         # Process frame
-#         frame_tensor = video_processor.process_frame(frame)
-        
-#         with torch.no_grad():
-#             output = video_model(frame_tensor)
-#         confidence, prediction = torch.max(torch.softmax(output, dim=1), dim=1)
-        
-#         return jsonify({
-#             'emotion': EMOTIONS[prediction.item()],
-#             'confidence': float(confidence.item()),
-#             'videoScore': float(confidence.item())
-#         })
-#     except Exception as e:
-#         return jsonify({'error': str(e)}), 500
+#     return jsonify({'error': 'Video processing is disabled'}), 400
 
 if __name__ == '__main__':
     app.run(host=Config.HOST, port=Config.PORT)
