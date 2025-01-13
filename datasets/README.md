@@ -22,12 +22,12 @@ datasets/
 ## Dataset Setup Instructions
 
 ### RAVDESS Dataset
-1. Download the RAVDESS dataset from [Zenodo](https://zenodo.org/record/1188976)
+1. Download the RAVDESS dataset from https://www.kaggle.com/datasets/uwrfkaggler/ravdess-emotional-speech-audio
 2. Extract the files
 3. Place the Actor_* folders in the `datasets/RAVDESS/` directory
 
 ### CREMA-D Dataset
-1. Download the CREMA-D dataset from [TalkBank](https://www.talkbank.org/access/Clinical/CREMA-D.html)
+1. Download the CREMA-D dataset from https://github.com/CheyneyComputerScience/CREMA-D
 2. Extract the files
 3. Place the following in the `datasets/CREMA-D/` directory:
    - AudioWAV folder containing WAV files

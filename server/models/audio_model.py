@@ -6,7 +6,10 @@ class AudioEmotionModel(nn.Module):
     def __init__(self, num_emotions=7):
         super().__init__()
         
-        # CNN layers for MFCC features
+        # Input shape: [batch_size, 1, n_mfcc * 3, time_steps]
+        # n_mfcc * 3 because we have MFCC + delta + delta-delta
+        
+        # CNN layers
         self.conv1 = nn.Conv2d(1, 64, 3, padding=1)
         self.conv2 = nn.Conv2d(64, 128, 3, padding=1)
         self.conv3 = nn.Conv2d(128, 256, 3, padding=1)
@@ -16,19 +19,21 @@ class AudioEmotionModel(nn.Module):
         self.bn2 = nn.BatchNorm2d(128)
         self.bn3 = nn.BatchNorm2d(256)
         
-        # LSTM layers
-        self.lstm = nn.LSTM(256, 128, batch_first=True, bidirectional=True)
-        
-        # Fully connected layers
-        self.fc1 = nn.Linear(256, 128)
-        self.fc2 = nn.Linear(128, num_emotions)
-        
-        # Other layers
+        # Pooling and other layers
         self.pool = nn.MaxPool2d(2)
         self.dropout = nn.Dropout(0.3)
         self.relu = nn.ReLU()
+        self.adaptive_pool = nn.AdaptiveAvgPool2d((4, 4))  # Fixed output size
+        
+        # Fully connected layers
+        self.fc1 = nn.Linear(256 * 4 * 4, 512)
+        self.fc2 = nn.Linear(512, num_emotions)
         
     def forward(self, x):
+        # Add channel dimension if not present
+        if len(x.shape) == 3:
+            x = x.unsqueeze(1)
+            
         # CNN layers
         x = self.relu(self.bn1(self.conv1(x)))
         x = self.pool(x)
@@ -39,17 +44,11 @@ class AudioEmotionModel(nn.Module):
         x = self.dropout(x)
         
         x = self.relu(self.bn3(self.conv3(x)))
-        x = self.pool(x)
+        x = self.adaptive_pool(x)  # Get fixed size output
         x = self.dropout(x)
         
-        # Reshape for LSTM
-        batch_size, channels, time, freq = x.size()
-        x = x.permute(0, 2, 1, 3)
-        x = x.reshape(batch_size, time, channels * freq)
-        
-        # LSTM layers
-        x, _ = self.lstm(x)
-        x = x[:, -1, :]  # Take last output
+        # Flatten
+        x = x.view(x.size(0), -1)
         
         # Fully connected layers
         x = self.relu(self.fc1(x))

@@ -8,14 +8,13 @@ from torch.nn.utils.rnn import pad_sequence
 import gc
 
 class DataPreprocessor:
-    def __init__(self, process_video: bool = False):
+    def __init__(self):
         self.audio_processor = AudioProcessor()
         self.video_processor = VideoProcessor()
         self.ravdess_loader = RAVDESSLoader()
         self.cremad_loader = CREMADLoader()
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         self.batch_size = 8  # Reduced batch size to manage memory
-        self.process_video = process_video  # Flag to control video processing
         print(f"Using device: {self.device}")
         
         # Unified emotion mapping
@@ -40,6 +39,9 @@ class DataPreprocessor:
         features = []
         labels = []
         
+        total_files = len(self.ravdess_loader.load_audio_data()) + len(self.cremad_loader.load_audio_data())
+        processed_files = 0  # to track progress
+        
         # Load RAVDESS audio
         print("Processing RAVDESS audio...")
         ravdess_audio = self.ravdess_loader.load_audio_data()
@@ -57,6 +59,11 @@ class DataPreprocessor:
                 # Clean up memory periodically
                 if i % 100 == 0:
                     self.cleanup_memory()
+
+                # Progress update
+                processed_files += 1
+                print(f"Processed {processed_files}/{total_files} files", end="\r")
+                
             except Exception as e:
                 print(f"Error processing {file_path}: {str(e)}")
 
@@ -74,10 +81,15 @@ class DataPreprocessor:
                 # Clean up memory periodically
                 if i % 100 == 0:
                     self.cleanup_memory()
+
+                # Progress update
+                processed_files += 1
+                print(f"Processed {processed_files}/{total_files} files", end="\r")
+                
             except Exception as e:
                 print(f"Error processing {file_path}: {str(e)}")
 
-        print("Processing audio features...")
+        print("\nProcessing audio features...")
         # Convert to tensors with padding
         features = [feat.squeeze(0) for feat in features]  # Remove extra dimensions
         max_length = max([feat.shape[-1] for feat in features])  # Get the max time step length
@@ -100,12 +112,11 @@ class DataPreprocessor:
     
     def prepare_video_dataset(self) -> Tuple[torch.Tensor, torch.Tensor]:
         """Prepare video dataset from both RAVDESS and CREMA-D."""
-        if not self.process_video:
-            print("Skipping video processing.")
-            return torch.tensor([]), torch.tensor([])
-
         features = []
         labels = []
+        
+        total_files = len(self.ravdess_loader.load_video_data()) + len(self.cremad_loader.load_video_data())
+        processed_files = 0  # to track progress
         
         # Load RAVDESS video
         print("Processing RAVDESS video...")
@@ -124,6 +135,10 @@ class DataPreprocessor:
                 # Clean up memory more frequently for video processing
                 if i % 50 == 0:
                     self.cleanup_memory()
+
+                # Progress update
+                processed_files += 1
+                print(f"Processed {processed_files}/{total_files} files", end="\r")
             except Exception as e:
                 print(f"Error processing {file_path}: {str(e)}")
         
@@ -141,10 +156,14 @@ class DataPreprocessor:
                 # Clean up memory more frequently for video processing
                 if i % 50 == 0:
                     self.cleanup_memory()
+
+                # Progress update
+                processed_files += 1
+                print(f"Processed {processed_files}/{total_files} files", end="\r")
             except Exception as e:
                 print(f"Error processing {file_path}: {str(e)}")
 
-        print("Processing video features...")
+        print("\nProcessing video features...")
         # Ensure all feature tensors have the same shape using padding
         features_padded = pad_sequence(features, batch_first=True, padding_value=0)
         labels = torch.tensor(labels, dtype=torch.long)

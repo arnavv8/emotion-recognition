@@ -3,7 +3,6 @@ import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import DataLoader, TensorDataset
 from models.audio_model import AudioEmotionModel
-# from models.video_model import VideoEmotionModel  # Commented out for now
 from utils.data_preprocessor import DataPreprocessor
 from config import Config
 import os
@@ -13,7 +12,6 @@ import seaborn as sns
 from sklearn.metrics import classification_report, confusion_matrix
 import json
 
-# Confusion matrix and classification report functions remain unchanged
 def plot_confusion_matrix(y_true, y_pred, labels, model_type):
     """Plot confusion matrix and save to file."""
     cm = confusion_matrix(y_true, y_pred)
@@ -30,20 +28,31 @@ def plot_confusion_matrix(y_true, y_pred, labels, model_type):
     plt.savefig(os.path.join(metrics_dir, f'{model_type.lower()}_confusion_matrix.png'))
     plt.close()
 
-def save_classification_report(y_true, y_pred, labels, model_type):
+'''def save_classification_report(y_true, y_pred, labels, model_type):
     """Save classification report to JSON file."""
-    report = classification_report(y_true, y_pred, 
-                                 target_names=labels, 
-                                 output_dict=True)
+    report = classification_report(y_true, y_pred, labels=[0,1,2,3,4,5,6], target_names=labels, output_dict=True, zero_division=0)
+
     
     metrics_dir = os.path.join(os.path.dirname(__file__), 'metrics')
     os.makedirs(metrics_dir, exist_ok=True)
     
     report_path = os.path.join(metrics_dir, f'{model_type.lower()}_classification_report.json')
     with open(report_path, 'w') as f:
-        json.dump(report, f, indent=4)
+        json.dump(report, f, indent=4)'''
 
-# Model evaluation and training functions remain unchanged
+def save_classification_report(y_true, y_pred, labels, model_type):
+    print(f"Labels provided to classification_report: {labels}")
+    print(f"Number of unique classes in dataset: {len(set(y_true))}")
+
+    # Ensure only the expected labels are passed
+    report = classification_report(y_true, y_pred, labels=[0,1,2,3,4,5,6], target_names=labels, output_dict=True, zero_division=0)
+
+    report_path = f"{model_type}_classification_report.json"
+    with open(report_path, "w") as f:
+        json.dump(report, f, indent=4)
+    print(f"Classification report saved to {report_path}")
+
+
 def evaluate_model(model, test_loader, labels, model_type, device):
     """Evaluate model and generate metrics."""
     model.eval()
@@ -57,6 +66,11 @@ def evaluate_model(model, test_loader, labels, model_type, device):
             _, predictions = outputs.max(1)
             all_preds.extend(predictions.cpu().numpy())
             all_labels.extend(targets.numpy())
+
+    print(f"Unique labels in test set: {set(all_labels)}")
+    print(f"Unique labels in predictions: {set(all_preds)}")
+    print(f"Expected labels: {labels}")
+
     
     # Generate and save metrics
     plot_confusion_matrix(all_labels, all_preds, labels, model_type)
@@ -69,8 +83,8 @@ def train_model(
     test_loader: DataLoader,
     labels: list,
     model_type: str,
-    num_epochs: int = 50,
-    learning_rate: float = 0.001,
+    num_epochs: int = Config.NUM_EPOCHS,
+    learning_rate: float = Config.LEARNING_RATE,
     device: str = 'cuda' if torch.cuda.is_available() else 'cpu'
 ) -> nn.Module:
     """Train the model and generate metrics."""
@@ -164,6 +178,11 @@ def train_model(
     plt.legend()
     plt.savefig(os.path.join(metrics_dir, f'{model_type.lower()}_training_curves.png'))
     plt.close()
+
+    print(f"Predictions sample: {all_preds[:10]}")
+    print(f"Labels sample: {all_labels[:10]}")
+    print(f"Expected labels: {labels}")
+
     
     # Load best model and evaluate
     model.load_state_dict(best_model)
@@ -175,7 +194,7 @@ def main():
     # Initialize data preprocessor
     preprocessor = DataPreprocessor()
     
-    # Emotion labels
+    # Define emotion labels - MUST match the indices in DataPreprocessor.emotion_to_idx
     emotion_labels = ['angry', 'disgust', 'fearful', 'happy', 'neutral', 'sad', 'surprised']
     
     # Prepare audio dataset
@@ -205,7 +224,7 @@ def main():
         split_data(audio_features, audio_labels)
     
     # Create audio data loaders
-    batch_size = 32
+    batch_size = Config.BATCH_SIZE
     
     audio_train_loader = DataLoader(
         TensorDataset(audio_train, audio_train_labels),
