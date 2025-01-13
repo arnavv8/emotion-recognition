@@ -22,22 +22,61 @@ def plot_confusion_matrix(y_true, y_pred, labels, model_type):
     plt.ylabel('True Label')
     plt.xlabel('Predicted Label')
     
-    metrics_dir = os.path.join(os.getcwd(), 'metrics')
+    metrics_dir = os.path.join(os.path.dirname(__file__), 'metrics')
     os.makedirs(metrics_dir, exist_ok=True)
     
     plt.savefig(os.path.join(metrics_dir, f'{model_type.lower()}_confusion_matrix.png'))
     plt.close()
 
+def convert_tensors_to_python(obj):
+    """Convert tensors to Python native types for JSON serialization."""
+    if isinstance(obj, torch.Tensor):
+        return obj.item() if obj.numel() == 1 else obj.tolist()
+    elif isinstance(obj, dict):
+        return {str(key): convert_tensors_to_python(value) for key, value in obj.items()}
+    elif isinstance(obj, (list, tuple)):
+        return [convert_tensors_to_python(item) for item in obj]
+    return obj
+
 def save_classification_report(y_true, y_pred, labels, model_type):
     """Save classification report to JSON file."""
-    report = classification_report(y_true, y_pred, labels=list(range(len(labels))), target_names=labels, output_dict=True)
-    results_dir = "metrics"
-    os.makedirs(results_dir, exist_ok=True)
-    
-    report_path = os.path.join(results_dir, f"classification_report_{model_type}.json")
-    with open(report_path, "w") as f:
+
+    print(f"Labels provided to classification_report: {labels}")
+    print(f"Number of unique classes in dataset: {len(set(y_true))}")
+
+    # Convert tensors to numpy arrays if needed
+    if isinstance(y_true, torch.Tensor):
+        y_true = y_true.cpu().numpy()
+    if isinstance(y_pred, torch.Tensor):
+        y_pred = y_pred.cpu().numpy()
+
+    # Convert labels to list of strings if they're tensors
+    if isinstance(labels[0], torch.Tensor):
+        labels = [str(label.item()) for label in labels]
+
+    # Ensure that the labels are passed correctly as integers (use the 7 emotion labels)
+    labels = [int(label) for label in labels]  
+
+    # Generate classification report
+    report = classification_report(y_true, y_pred, 
+                                 labels=labels,  # Ensure this matches the number of classes (7)
+                                 target_names=['angry', 'disgust', 'fearful', 'happy', 'neutral', 'sad', 'surprised'],
+                                 output_dict=True,
+                                 zero_division=0)
+
+    # Convert any remaining tensors to Python native types
+    report = convert_tensors_to_python(report)
+
+    print("True Labels: ", y_true)
+    print("Predicted Labels: ", y_pred)
+
+    metrics_dir = os.path.join(os.path.dirname(__file__), 'metrics')
+    os.makedirs(metrics_dir, exist_ok=True)
+
+    report_path = os.path.join(metrics_dir, f'{model_type.lower()}_classification_report.json')
+    with open(report_path, 'w') as f:
         json.dump(report, f, indent=4)
-    
+
     print(f"Classification report saved to {report_path}")
 
 def evaluate_model(model, test_loader, labels, model_type, device):
@@ -54,6 +93,11 @@ def evaluate_model(model, test_loader, labels, model_type, device):
             _, predictions = outputs.max(1)
             all_preds.extend(predictions.cpu().numpy())
             all_labels.extend(targets.cpu().numpy())
+
+    # Debugging: Check unique labels in dataset and predictions
+    print(f"Unique labels in test set: {set(all_labels)}")
+    print(f"Unique labels in predictions: {set(all_preds)}")
+    print(f"Expected labels: {labels}")
     
     plot_confusion_matrix(all_labels, all_preds, labels, model_type)
     save_classification_report(all_labels, all_preds, labels, model_type)
@@ -133,7 +177,7 @@ def main():
         return (
             (features[indices[:train_size]], labels[indices[:train_size]]),
             (features[indices[train_size:train_size+val_size]], labels[indices[train_size:train_size+val_size]]),
-            (features[indices[train_size+val_size:]], labels[indices[train_size+val_size:]])
+            (features[indices[train_size+val_size:]], labels[indices[train_size+val_size:]]),
         )
     
     (audio_train, audio_train_labels), (audio_val, audio_val_labels), (audio_test, audio_test_labels) = split_data(audio_features, audio_labels)

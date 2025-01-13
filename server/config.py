@@ -34,6 +34,6 @@ class Config:
     VIDEO_FRAME_SIZE = (112, 112)  # Reduced from 224x224 for memory efficiency
     
     # Training settings
-    BATCH_SIZE = 32  # Reduced batch size
+    BATCH_SIZE = 32
     NUM_EPOCHS = 50
     LEARNING_RATE = 0.001
