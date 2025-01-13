@@ -8,13 +8,14 @@ from torch.nn.utils.rnn import pad_sequence
 import gc
 
 class DataPreprocessor:
-    def __init__(self):
+    def __init__(self, process_video: bool = False):
         self.audio_processor = AudioProcessor()
         self.video_processor = VideoProcessor()
         self.ravdess_loader = RAVDESSLoader()
         self.cremad_loader = CREMADLoader()
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         self.batch_size = 8  # Reduced batch size to manage memory
+        self.process_video = process_video  # Flag to control video processing
         print(f"Using device: {self.device}")
         
         # Unified emotion mapping
@@ -99,6 +100,10 @@ class DataPreprocessor:
     
     def prepare_video_dataset(self) -> Tuple[torch.Tensor, torch.Tensor]:
         """Prepare video dataset from both RAVDESS and CREMA-D."""
+        if not self.process_video:
+            print("Skipping video processing.")
+            return torch.tensor([]), torch.tensor([])
+
         features = []
         labels = []
         

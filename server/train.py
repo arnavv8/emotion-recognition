@@ -3,7 +3,7 @@ import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import DataLoader, TensorDataset
 from models.audio_model import AudioEmotionModel
-from models.video_model import VideoEmotionModel
+# from models.video_model import VideoEmotionModel  # Commented out for now
 from utils.data_preprocessor import DataPreprocessor
 from config import Config
 import os
@@ -13,6 +13,7 @@ import seaborn as sns
 from sklearn.metrics import classification_report, confusion_matrix
 import json
 
+# Confusion matrix and classification report functions remain unchanged
 def plot_confusion_matrix(y_true, y_pred, labels, model_type):
     """Plot confusion matrix and save to file."""
     cm = confusion_matrix(y_true, y_pred)
@@ -23,7 +24,6 @@ def plot_confusion_matrix(y_true, y_pred, labels, model_type):
     plt.ylabel('True Label')
     plt.xlabel('Predicted Label')
     
-    # Create metrics directory if it doesn't exist
     metrics_dir = os.path.join(os.path.dirname(__file__), 'metrics')
     os.makedirs(metrics_dir, exist_ok=True)
     
@@ -43,6 +43,7 @@ def save_classification_report(y_true, y_pred, labels, model_type):
     with open(report_path, 'w') as f:
         json.dump(report, f, indent=4)
 
+# Model evaluation and training functions remain unchanged
 def evaluate_model(model, test_loader, labels, model_type, device):
     """Evaluate model and generate metrics."""
     model.eval()
@@ -177,12 +178,9 @@ def main():
     # Emotion labels
     emotion_labels = ['angry', 'disgust', 'fearful', 'happy', 'neutral', 'sad', 'surprised']
     
-    # Prepare datasets
+    # Prepare audio dataset
     print("Preparing audio dataset...")
     audio_features, audio_labels = preprocessor.prepare_audio_dataset()
-    
-    print("Preparing video dataset...")
-    video_features, video_labels = preprocessor.prepare_video_dataset()
     
     # Split data (70% train, 15% val, 15% test)
     def split_data(features, labels):
@@ -202,14 +200,11 @@ def main():
             (features[test_indices], labels[test_indices])
         )
     
-    # Split datasets
+    # Split audio dataset
     (audio_train, audio_train_labels), (audio_val, audio_val_labels), (audio_test, audio_test_labels) = \
         split_data(audio_features, audio_labels)
     
-    (video_train, video_train_labels), (video_val, video_val_labels), (video_test, video_test_labels) = \
-        split_data(video_features, video_labels)
-    
-    # Create data loaders
+    # Create audio data loaders
     batch_size = 32
     
     audio_train_loader = DataLoader(
@@ -228,22 +223,6 @@ def main():
         batch_size=batch_size
     )
     
-    video_train_loader = DataLoader(
-        TensorDataset(video_train, video_train_labels),
-        batch_size=batch_size,
-        shuffle=True
-    )
-    
-    video_val_loader = DataLoader(
-        TensorDataset(video_val, video_val_labels),
-        batch_size=batch_size
-    )
-    
-    video_test_loader = DataLoader(
-        TensorDataset(video_test, video_test_labels),
-        batch_size=batch_size
-    )
-    
     # Train audio model
     print("Training audio model...")
     audio_model = AudioEmotionModel()
@@ -256,26 +235,11 @@ def main():
         'Audio'
     )
     
-    # Train video model
-    print("Training video model...")
-    video_model = VideoEmotionModel()
-    trained_video_model = train_model(
-        video_model,
-        video_train_loader,
-        video_val_loader,
-        video_test_loader,
-        emotion_labels,
-        'Video'
-    )
-    
-    # Save models
+    # Save audio model
     os.makedirs(os.path.dirname(Config.AUDIO_MODEL_PATH), exist_ok=True)
-    os.makedirs(os.path.dirname(Config.VIDEO_MODEL_PATH), exist_ok=True)
-    
     torch.save(trained_audio_model.state_dict(), Config.AUDIO_MODEL_PATH)
-    torch.save(trained_video_model.state_dict(), Config.VIDEO_MODEL_PATH)
     
-    print("Training completed! Models and metrics saved.")
+    print("Audio model training completed!")
 
 if __name__ == '__main__':
     main()
