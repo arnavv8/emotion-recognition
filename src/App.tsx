@@ -5,7 +5,7 @@ import { EmotionDisplay } from './components/EmotionDisplay';
 import { MediaHistory } from './components/MediaHistory';
 import { PredictionResult, StoredMedia } from './types';
 
-function App() {
+export default function App() {
   const [prediction, setPrediction] = useState<PredictionResult | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [mediaHistory, setMediaHistory] = useState<StoredMedia[]>([]);
@@ -42,6 +42,7 @@ function App() {
         id: Date.now().toString(),
         type,
         blob: media,
+        filename: media instanceof File ? media.name : `${type}_recording_${Date.now()}`,
         timestamp: new Date(),
         prediction: result,
       };
@@ -182,5 +183,3 @@ function App() {
     </div>
   );
 }
-
-export default App;

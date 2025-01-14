@@ -20,7 +20,7 @@ export function MediaHistory({ mediaList, onPlay, onDelete }: Props) {
           {mediaList.map((media) => (
             <div
               key={media.id}
-              className="flex items-center justify-between p-4 bg-gray-50 rounded-lg"
+              className="flex items-center justify-between p-4 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors"
             >
               <div className="flex items-center gap-3">
                 {media.type === 'audio' ? (
@@ -30,29 +30,31 @@ export function MediaHistory({ mediaList, onPlay, onDelete }: Props) {
                 )}
                 <div>
                   <p className="font-medium">
-                    {media.type === 'audio' ? 'Audio' : 'Video'} Recording
+                    {media.filename || `${media.type === 'audio' ? 'Audio' : 'Video'} Recording`}
                   </p>
-                  <p className="text-sm text-gray-500">
-                    {new Date(media.timestamp).toLocaleString()}
-                  </p>
+                  <div className="flex gap-2 text-sm text-gray-500">
+                    <span>{new Date(media.timestamp).toLocaleString()}</span>
+                    {media.prediction && (
+                      <span className="px-2 py-0.5 bg-gray-200 rounded-full">
+                        {media.prediction.emotion}
+                      </span>
+                    )}
+                  </div>
                 </div>
               </div>
               
               <div className="flex items-center gap-2">
-                {media.prediction && (
-                  <span className="text-sm bg-gray-200 px-2 py-1 rounded">
-                    {media.prediction.emotion}
-                  </span>
-                )}
                 <button
                   onClick={() => onPlay(media)}
-                  className="p-2 rounded-full hover:bg-gray-200"
+                  className="p-2 rounded-full hover:bg-gray-200 transition-colors"
+                  title="Play"
                 >
                   <Play size={20} />
                 </button>
                 <button
                   onClick={() => onDelete(media.id)}
-                  className="p-2 rounded-full hover:bg-gray-200 text-red-500"
+                  className="p-2 rounded-full hover:bg-gray-200 text-red-500 transition-colors"
+                  title="Delete"
                 >
                   <Trash2 size={20} />
                 </button>

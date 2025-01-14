@@ -17,6 +17,7 @@ export interface StoredMedia {
   id: string;
   type: 'audio' | 'video';
   blob: Blob;
+  filename?: string;  // Added filename field
   timestamp: Date;
   prediction?: PredictionResult;
 }
