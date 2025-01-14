@@ -15,16 +15,22 @@ import json
 def plot_confusion_matrix(y_true, y_pred, labels, model_type):
     """Plot confusion matrix and save to file."""
     cm = confusion_matrix(y_true, y_pred)
-    plt.figure(figsize=(10, 8))
+    plt.figure(figsize=(12, 10))
     sns.heatmap(cm, annot=True, fmt='d', cmap='Blues',
-                xticklabels=labels, yticklabels=labels)
+                xticklabels=labels, yticklabels=labels) 
     plt.title(f'Confusion Matrix - {model_type}')
     plt.ylabel('True Label')
     plt.xlabel('Predicted Label')
-    
+
+    # Define emotion labels explicitly within the function
+    emotion_labels = ['angry', 'disgust', 'fear', 'happy', 'neutral', 'sad', 'surprise']
+
+    # Set x and y tick labels to emotion labels
+    plt.xticks(range(len(emotion_labels)), emotion_labels, rotation=45)
+    plt.yticks(range(len(emotion_labels)), emotion_labels)
+
     metrics_dir = os.path.join(os.getcwd(), 'metrics')
     os.makedirs(metrics_dir, exist_ok=True)
-    
     plt.savefig(os.path.join(metrics_dir, f'{model_type.lower()}_confusion_matrix.png'))
     plt.close()
 
@@ -139,7 +145,6 @@ def train_model(model, train_loader, val_loader, test_loader, labels, model_type
         if avg_val_loss < best_val_loss:
             best_val_loss = avg_val_loss
             torch.save(model.state_dict(), best_model_path)
-            print(f"Best model saved to {best_model_path}")
 
     metrics_path = os.path.join(metrics_dir, f'{model_type.lower()}_training_metrics.json')
     with open(metrics_path, 'w') as f:
@@ -172,7 +177,7 @@ def train_model(model, train_loader, val_loader, test_loader, labels, model_type
     print(f"Validation accuracy curve saved to {accuracy_path}")
 
     # Load the best model before evaluating and using it for production
-    model.load_state_dict(torch.load(best_model_path, map_location=device))
+    model.load_state_dict(torch.load(best_model_path, map_location=device,weights_only=True))
     print(f"Loaded best model from {best_model_path} for evaluation and production.")
 
     evaluate_model(model, test_loader, labels, model_type, device)

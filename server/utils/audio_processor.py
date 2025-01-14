@@ -11,21 +11,21 @@ class AudioProcessor:
         self.n_mels = Config.N_MELS
         self.window_size = Config.WINDOW_SIZE
         self.hop_length = Config.HOP_LENGTH
-        self.max_time_length = Config.MAX_TIME_LENGTH  # Maximum time steps for padding/trimming
+        self.max_time_length = Config.MAX_TIME_LENGTH  # Fixed time steps for padding/trimming
 
     def load_audio(self, file_path: str) -> Tuple[torch.Tensor, int]:
         """
-        Load an audio file and resample it to the desired sample rate.
+        Load an audio file, convert to mono, and resample if necessary.
         """
         waveform, sample_rate = torchaudio.load(file_path)
         
-        # Convert stereo to mono if necessary
-        if waveform.shape[0] > 1:  # Stereo audio
-            waveform = torch.mean(waveform, dim=0, keepdim=True)  # Convert to mono
+        # Convert stereo to mono
+        if waveform.shape[0] > 1:
+            waveform = torch.mean(waveform, dim=0, keepdim=True)
         
-        # Resample audio if the sample rate doesn't match the target sample rate
+        # Resample only if required
         if sample_rate != self.sample_rate:
-            resampler = torchaudio.transforms.Resample(orig_freq=sample_rate, new_freq=self.sample_rate)
+            resampler = torchaudio.transforms.Resample(orig_freq=sample_rate, new_freq=self.sample_rate).to(waveform.device)
             waveform = resampler(waveform)
         
         return waveform, self.sample_rate
@@ -34,7 +34,6 @@ class AudioProcessor:
         """
         Compute MFCC features along with delta and delta-delta features.
         """
-        # Compute MFCC features
         mfcc_transform = torchaudio.transforms.MFCC(
             sample_rate=self.sample_rate,
             n_mfcc=self.n_mfcc,
@@ -50,7 +49,7 @@ class AudioProcessor:
         mfcc_delta = torchaudio.functional.compute_deltas(mfcc)
         mfcc_delta2 = torchaudio.functional.compute_deltas(mfcc_delta)
 
-        # Combine MFCC, delta, and delta-delta features
+        # Concatenate features
         features = torch.cat([mfcc, mfcc_delta, mfcc_delta2], dim=1)  # Shape: [1, n_features, time_steps]
 
         return features
@@ -62,14 +61,12 @@ class AudioProcessor:
         waveform, _ = self.load_audio(file_path)
         features = self.extract_features(waveform)
 
-        # Ensure features have a fixed length (padding or trimming as needed)
+        # Ensure fixed-length padding/trimming
         time_steps = features.shape[-1]
         if time_steps > self.max_time_length:
-            # Trim to max_time_length
-            features = features[:, :, :self.max_time_length]
+            features = features[:, :, :self.max_time_length]  # Trim
         elif time_steps < self.max_time_length:
-            # Pad to max_time_length
-            padding = self.max_time_length - time_steps
-            features = torch.nn.functional.pad(features, (0, padding))
+            pad = torch.nn.ConstantPad1d((0, self.max_time_length - time_steps), 0)
+            features = pad(features)  # Pad
 
-        return features.unsqueeze(0)  # Add batch dimension for compatibility with training pipelines
+        return features.unsqueeze(0)  # Add batch dimension for compatibility
