@@ -13,7 +13,7 @@ CORS(app, origins=Config.ALLOWED_ORIGINS)
 # Load audio model
 try:
     audio_model = AudioEmotionModel()
-    audio_model.load_state_dict(torch.load(Config.AUDIO_MODEL_PATH))
+    audio_model.load_state_dict(torch.load(Config.AUDIO_MODEL_PATH,weights_only=True))
     audio_model.eval()
 except Exception as e:
     print(f"Error loading audio model: {str(e)}")
@@ -84,4 +84,4 @@ def predict():
 #     return jsonify({'error': 'Video processing is disabled'}), 400
 
 if __name__ == '__main__':
-    app.run(host=Config.HOST, port=Config.PORT)
+    app.run(host=Config.HOST, port=Config.PORT, debug=True)

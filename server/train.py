@@ -22,7 +22,7 @@ def plot_confusion_matrix(y_true, y_pred, labels, model_type):
     plt.ylabel('True Label')
     plt.xlabel('Predicted Label')
     
-    metrics_dir = os.path.join(os.path.dirname(__file__), 'metrics')
+    metrics_dir = os.path.join(os.getcwd(), 'metrics')
     os.makedirs(metrics_dir, exist_ok=True)
     
     plt.savefig(os.path.join(metrics_dir, f'{model_type.lower()}_confusion_matrix.png'))
@@ -40,37 +40,25 @@ def convert_tensors_to_python(obj):
 
 def save_classification_report(y_true, y_pred, labels, model_type):
     """Save classification report to JSON file."""
-
-    print(f"Labels provided to classification_report: {labels}")
-    print(f"Number of unique classes in dataset: {len(set(y_true))}")
-
-    # Convert tensors to numpy arrays if needed
     if isinstance(y_true, torch.Tensor):
         y_true = y_true.cpu().numpy()
     if isinstance(y_pred, torch.Tensor):
         y_pred = y_pred.cpu().numpy()
 
-    # Convert labels to list of strings if they're tensors
-    if isinstance(labels[0], torch.Tensor):
-        labels = [str(label.item()) for label in labels]
+    labels = [int(label) for label in labels]
+    unique_classes = sorted(set(y_true) | set(y_pred))
+    
+    class_names = ['angry', 'disgust', 'fearful', 'happy', 'neutral', 'sad', 'surprised']
 
-    # Ensure that the labels are passed correctly as integers (use the 7 emotion labels)
-    labels = [int(label) for label in labels]  
+    report = classification_report(
+        y_true, y_pred, labels=unique_classes, 
+        target_names=[class_names[i] for i in unique_classes],
+        output_dict=True, zero_division=0
+    )
 
-    # Generate classification report
-    report = classification_report(y_true, y_pred, 
-                                 labels=labels,  # Ensure this matches the number of classes (7)
-                                 target_names=['angry', 'disgust', 'fearful', 'happy', 'neutral', 'sad', 'surprised'],
-                                 output_dict=True,
-                                 zero_division=0)
-
-    # Convert any remaining tensors to Python native types
     report = convert_tensors_to_python(report)
 
-    print("True Labels: ", y_true)
-    print("Predicted Labels: ", y_pred)
-
-    metrics_dir = os.path.join(os.path.dirname(__file__), 'metrics')
+    metrics_dir = os.path.join(os.getcwd(), 'metrics')
     os.makedirs(metrics_dir, exist_ok=True)
 
     report_path = os.path.join(metrics_dir, f'{model_type.lower()}_classification_report.json')
@@ -94,28 +82,24 @@ def evaluate_model(model, test_loader, labels, model_type, device):
             all_preds.extend(predictions.cpu().numpy())
             all_labels.extend(targets.cpu().numpy())
 
-    # Debugging: Check unique labels in dataset and predictions
-    print(f"Unique labels in test set: {set(all_labels)}")
-    print(f"Unique labels in predictions: {set(all_preds)}")
-    print(f"Expected labels: {labels}")
-    
     plot_confusion_matrix(all_labels, all_preds, labels, model_type)
     save_classification_report(all_labels, all_preds, labels, model_type)
 
 def train_model(model, train_loader, val_loader, test_loader, labels, model_type, num_epochs=Config.NUM_EPOCHS, learning_rate=Config.LEARNING_RATE, device='cuda' if torch.cuda.is_available() else 'cpu'):
-    """Train the model and generate metrics."""
+    """Train the model and save the best model for production."""
+
     model = model.to(device)
     criterion = nn.CrossEntropyLoss()
     optimizer = optim.Adam(model.parameters(), lr=learning_rate)
-    
+
     best_val_loss = float('inf')
-    best_model = None
-    
+    best_model_path = os.path.join(os.getcwd(), f'models\{model_type.lower()}_model.pth')
+
     metrics_dir = os.path.join(os.getcwd(), 'metrics')
     os.makedirs(metrics_dir, exist_ok=True)
-    
+
     training_metrics = {'epochs': [], 'train_loss': [], 'val_loss': [], 'val_accuracy': []}
-    
+
     for epoch in range(num_epochs):
         model.train()
         train_loss = 0.0
@@ -127,7 +111,7 @@ def train_model(model, train_loader, val_loader, test_loader, labels, model_type
             loss.backward()
             optimizer.step()
             train_loss += loss.item()
-        
+
         model.eval()
         val_loss = 0.0
         correct, total = 0, 0
@@ -140,26 +124,57 @@ def train_model(model, train_loader, val_loader, test_loader, labels, model_type
                 _, predicted = outputs.max(1)
                 total += labels.size(0)
                 correct += predicted.eq(labels).sum().item()
-        
+
         avg_train_loss = train_loss / len(train_loader)
         avg_val_loss = val_loss / len(val_loader)
         accuracy = 100. * correct / total
+
         training_metrics['epochs'].append(epoch + 1)
         training_metrics['train_loss'].append(avg_train_loss)
         training_metrics['val_loss'].append(avg_val_loss)
         training_metrics['val_accuracy'].append(accuracy)
-        
+
         print(f'Epoch {epoch+1}/{num_epochs}: Training Loss: {avg_train_loss:.4f}, Validation Loss: {avg_val_loss:.4f}, Accuracy: {accuracy:.2f}%')
-        
+
         if avg_val_loss < best_val_loss:
             best_val_loss = avg_val_loss
-            best_model = model.state_dict()
-    
+            torch.save(model.state_dict(), best_model_path)
+            print(f"Best model saved to {best_model_path}")
+
     metrics_path = os.path.join(metrics_dir, f'{model_type.lower()}_training_metrics.json')
     with open(metrics_path, 'w') as f:
         json.dump(training_metrics, f, indent=4)
-    
-    model.load_state_dict(best_model)
+
+    # Plot validation loss curve
+    plt.figure(figsize=(10, 5))
+    plt.plot(training_metrics['epochs'], training_metrics['val_loss'], label='Validation Loss', marker='o', color='r')
+    plt.xlabel('Epochs')
+    plt.ylabel('Loss')
+    plt.title('Validation Loss Curve')
+    plt.legend()
+    plt.grid(True)
+    val_loss_path = os.path.join(metrics_dir, f'{model_type.lower()}_training_curves.png')
+    plt.savefig(val_loss_path)
+    plt.close()
+    print(f"Validation loss curve saved to {val_loss_path}")
+
+    # Plot accuracy curve
+    plt.figure(figsize=(10, 5))
+    plt.plot(training_metrics['epochs'], training_metrics['val_accuracy'], label='Validation Accuracy', marker='o', color='b')
+    plt.xlabel('Epochs')
+    plt.ylabel('Accuracy (%)')
+    plt.title('Validation Accuracy Curve')
+    plt.legend()
+    plt.grid(True)
+    accuracy_path = os.path.join(metrics_dir, f'{model_type.lower()}_training_accuracy.png')
+    plt.savefig(accuracy_path)
+    plt.close()
+    print(f"Validation accuracy curve saved to {accuracy_path}")
+
+    # Load the best model before evaluating and using it for production
+    model.load_state_dict(torch.load(best_model_path, map_location=device))
+    print(f"Loaded best model from {best_model_path} for evaluation and production.")
+
     evaluate_model(model, test_loader, labels, model_type, device)
     return model
 
@@ -191,8 +206,6 @@ def main():
     audio_model = AudioEmotionModel()
     trained_audio_model = train_model(audio_model, audio_train_loader, audio_val_loader, audio_test_loader, emotion_labels, 'Audio')
     
-    os.makedirs(os.path.dirname(Config.AUDIO_MODEL_PATH), exist_ok=True)
-    torch.save(trained_audio_model.state_dict(), Config.AUDIO_MODEL_PATH)
     print("Audio model training completed!")
 
 if __name__ == '__main__':
