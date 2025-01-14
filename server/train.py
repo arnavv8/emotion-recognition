@@ -166,7 +166,7 @@ def main():
     print(f"Using device: {device}")
 
     preprocessor = DataPreprocessor()
-    dataset = 'cremad'  # Change dataset here: 'ravdess', 'cremad', 'both'
+    dataset = 'ravdess'  # Change dataset here: 'ravdess', 'cremad', 'both'
 
     if dataset == 'ravdess':
         emotion_labels = ['angry', 'disgusted', 'fearful', 'happy', 'neutral', 'sad', 'surprised']
