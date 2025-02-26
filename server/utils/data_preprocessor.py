@@ -2,6 +2,7 @@ import torch
 import numpy as np
 from typing import List, Tuple, Dict
 from .audio_processor import AudioProcessor
+from .video_processor import VideoProcessor
 from .dataset_loader import RAVDESSLoader, CREMADLoader
 from torch.nn.utils.rnn import pad_sequence
 import gc
@@ -9,21 +10,35 @@ import gc
 class DataPreprocessor:
     def __init__(self):
         self.audio_processor = AudioProcessor()
+        self.video_processor = VideoProcessor()
         self.ravdess_loader = RAVDESSLoader()
         self.cremad_loader = CREMADLoader()
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         print(f"Using device: {self.device}")
         
-        # Unified emotion mapping for both datasets
-        self.emotion_to_idx = {
-            'angry': 0,
-            'disgust': 1,
-            'fearful': 2,
-            'happy': 3,
-            'neutral': 4,
-            'sad': 5,
-            'surprised': 6
+        # Dataset-specific emotion mappings
+        self.ravdess_emotions = {
+            'neutral': 0,
+            'calm': 1,
+            'happy': 2,
+            'sad': 3,
+            'angry': 4,
+            'fearful': 5,
+            'disgust': 6,
+            'surprised': 7
         }
+        
+        self.cremad_emotions = {
+            'ANG': 0,  # angry
+            'DIS': 1,  # disgust
+            'FEA': 2,  # fearful
+            'HAP': 3,  # happy
+            'NEU': 4,  # neutral
+            'SAD': 5   # sad
+        }
+        
+        # Current emotion mapping (will be set based on dataset)
+        self.emotion_to_idx = {}
     
     def cleanup_memory(self):
         """Clean up GPU memory."""
@@ -31,118 +46,215 @@ class DataPreprocessor:
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
 
-    def prepare_audio_dataset(self, dataset: str = 'both') -> Tuple[torch.Tensor, torch.Tensor]:
-        """
-        Prepare audio dataset with dataset selection.
-        dataset: 'ravdess', 'cremad', or 'both'
-        """
-        if dataset not in ['ravdess', 'cremad', 'both']:
-            raise ValueError("dataset must be 'ravdess', 'cremad', or 'both'")
+    def prepare_audio_dataset(self, dataset: str) -> Tuple[torch.Tensor, torch.Tensor]:
+        """Prepare audio dataset with dataset-specific processing."""
+        if dataset not in ['ravdess', 'cremad']:
+            raise ValueError("dataset must be 'ravdess' or 'cremad'")
+            
+        # Set emotion mapping based on selected dataset
+        self.emotion_to_idx = (
+            self.ravdess_emotions if dataset == 'ravdess' 
+            else self.cremad_emotions
+        )
+        
+        print(f"\nUsing emotion mapping for {dataset.upper()}:")
+        for emotion, idx in sorted(self.emotion_to_idx.items()):
+            print(f"{emotion}: {idx}")
 
         features = []
         labels = []
         processed_count = 0
         total_files = 0
         skipped_files = 0
+        emotion_counts = {emotion: 0 for emotion in self.emotion_to_idx.keys()}
         
-        # Load RAVDESS audio if selected
-        if dataset in ['ravdess', 'both']:
-            ravdess_audio = self.ravdess_loader.load_audio_data()
-            total_files += len(ravdess_audio)
-            print("\nProcessing RAVDESS audio...")
-            
-            for file_path, metadata in ravdess_audio:
-                try:
-                    # Skip 'calm' emotion as it's not in our unified emotion set
-                    if metadata['emotion'] == 'calm':
-                        skipped_files += 1
-                        continue
-                        
-                    # Process audio file
-                    audio_features = self.audio_processor.preprocess_audio(file_path)
-                    features.append(audio_features.squeeze(0))
-                    
-                    # Get emotion label
-                    label = self.emotion_to_idx[metadata['emotion']]
-                    labels.append(label)
-                    
-                    # Update progress
-                    processed_count += 1
-                    if processed_count % 10 == 0:  # Show progress every 10 files
-                        print(f"\rProcessed {processed_count}/{total_files} files | Skipped: {skipped_files}", end="", flush=True)
-                        self.cleanup_memory()
-                        
-                except Exception as e:
-                    print(f"\nError processing {file_path}: {str(e)}")
+        # Load dataset-specific audio
+        loader = self.ravdess_loader if dataset == 'ravdess' else self.cremad_loader
+        audio_files = loader.load_audio_data()
+        total_files = len(audio_files)
+        print(f"\nProcessing {dataset.upper()} audio...")
+        
+        for file_path, metadata in audio_files:
+            try:
+                # Process audio file
+                audio_features = self.audio_processor.preprocess_audio(
+                    file_path,
+                    dataset_type=dataset
+                )
+                
+                # Get emotion label
+                emotion_key = metadata['emotion']
+                if dataset == 'cremad':
+                    emotion_key = metadata['emotion'][:3].upper()
+                
+                if emotion_key not in self.emotion_to_idx:
+                    print(f"\nWarning: Unknown emotion {emotion_key} in {file_path}")
                     skipped_files += 1
-
-        # Load CREMA-D audio if selected
-        if dataset in ['cremad', 'both']:
-            cremad_audio = self.cremad_loader.load_audio_data()
-            if dataset == 'cremad':
-                total_files = len(cremad_audio)
-                processed_count = 0
-            else:
-                total_files += len(cremad_audio)
-            
-            print("\nProcessing CREMA-D audio...")
-            
-            for file_path, metadata in cremad_audio:
-                try:
-                    # Map CREMA-D emotions to our unified set
-                    if metadata['emotion'] not in self.emotion_to_idx:
-                        skipped_files += 1
-                        continue
-                        
-                    # Process audio file
-                    audio_features = self.audio_processor.preprocess_audio(file_path)
-                    features.append(audio_features.squeeze(0))
+                    continue
+                
+                label = self.emotion_to_idx[emotion_key]
+                emotion_counts[emotion_key] += 1
+                
+                features.append(audio_features.squeeze(0))
+                labels.append(label)
+                
+                # Update progress
+                processed_count += 1
+                if processed_count % 100 == 0:
+                    print(f"\rProcessed {processed_count}/{total_files} files | "
+                          f"Skipped: {skipped_files}", end="", flush=True)
+                    print("\nCurrent emotion distribution:")
+                    for emotion, count in emotion_counts.items():
+                        print(f"{emotion}: {count}")
+                    self.cleanup_memory()
                     
-                    # Get emotion label
-                    label = self.emotion_to_idx[metadata['emotion']]
-                    labels.append(label)
-                    
-                    # Update progress
-                    processed_count += 1
-                    if processed_count % 10 == 0:  # Show progress every 10 files
-                        print(f"\rProcessed {processed_count}/{total_files} files | Skipped: {skipped_files}", end="", flush=True)
-                        self.cleanup_memory()
-                        
-                except Exception as e:
-                    print(f"\nError processing {file_path}: {str(e)}")
-                    skipped_files += 1
+            except Exception as e:
+                print(f"\nError processing {file_path}: {str(e)}")
+                skipped_files += 1
 
         print(f"\nProcessing complete!")
         print(f"Total files processed: {processed_count}")
         print(f"Files skipped: {skipped_files}")
         print(f"Success rate: {(processed_count / (processed_count + skipped_files)) * 100:.2f}%")
+        print("\nFinal emotion distribution:")
+        for emotion, count in emotion_counts.items():
+            print(f"{emotion}: {count}")
 
         if not features:
             raise ValueError("No audio files were successfully processed")
 
         print("\nPreparing final dataset...")
         
-        # Convert to tensors with padding
         try:
-            # Find maximum length across all features
-            max_length = max(feat.shape[-1] for feat in features)
-            
-            # Pad all features to max_length
-            features_padded = []
-            for i, feat in enumerate(features):
-                padded = torch.nn.functional.pad(feat, (0, max_length - feat.shape[-1]))
-                features_padded.append(padded)
-                
-                # Clean up memory periodically
-                if i % 100 == 0:
-                    self.cleanup_memory()
-            
-            # Stack features and convert labels to tensor
-            features_tensor = torch.stack(features_padded)
+            # Convert to tensors
+            features_tensor = torch.stack(features)
             labels_tensor = torch.tensor(labels, dtype=torch.long)
             
-            print(f"Dataset shape: {features_tensor.shape}")
+            # Verify data
+            unique_labels = torch.unique(labels_tensor)
+            print("\nUnique labels in dataset:", unique_labels.tolist())
+            print("\nLabel counts:")
+            for label in unique_labels:
+                count = (labels_tensor == label).sum().item()
+                emotion = [k for k, v in self.emotion_to_idx.items() if v == label.item()][0]
+                print(f"{emotion} (label {label.item()}): {count}")
+            
+            # Normalize features
+            features_mean = features_tensor.mean(dim=0, keepdim=True)
+            features_std = features_tensor.std(dim=0, keepdim=True)
+            features_tensor = (features_tensor - features_mean) / (features_std + 1e-6)
+            
+            print(f"\nDataset shape: {features_tensor.shape}")
             print(f"Labels shape: {labels_tensor.shape}")
+            print(f"Number of emotion classes: {len(self.emotion_to_idx)}")
+            
+            # Verify tensor device placement
+            features_tensor = features_tensor.to(self.device)
+            labels_tensor = labels_tensor.to(self.device)
+            print(f"Features device: {features_tensor.device}")
+            print(f"Labels device: {labels_tensor.device}")
+            
+            return features_tensor, labels_tensor
+            
+        except Exception as e:
+            print(f"Error preparing final dataset: {str(e)}")
+            raise
+
+    def prepare_video_dataset(self, dataset: str) -> Tuple[torch.Tensor, torch.Tensor]:
+        """Prepare video dataset (CREMA-D only)."""
+        if dataset != 'cremad':
+            raise ValueError("Video dataset preparation is only supported for CREMA-D")
+        
+        self.emotion_to_idx = self.cremad_emotions
+        print("\nUsing CREMA-D emotion mapping:")
+        for emotion, idx in sorted(self.emotion_to_idx.items()):
+            print(f"{emotion}: {idx}")
+        
+        features = []
+        labels = []
+        processed_count = 0
+        total_files = 0
+        skipped_files = 0
+        emotion_counts = {emotion: 0 for emotion in self.emotion_to_idx.keys()}
+        
+        # Load CREMA-D video files
+        video_files = self.cremad_loader.load_video_data()
+        total_files = len(video_files)
+        print("\nProcessing CREMA-D video...")
+        
+        for file_path, metadata in video_files:
+            try:
+                # Process video file
+                video_features = self.video_processor.extract_frames(file_path)
+                
+                # Get emotion label
+                emotion_key = metadata['emotion'][:3].upper()
+                if emotion_key not in self.emotion_to_idx:
+                    print(f"\nWarning: Unknown emotion {emotion_key} in {file_path}")
+                    skipped_files += 1
+                    continue
+                
+                label = self.emotion_to_idx[emotion_key]
+                emotion_counts[emotion_key] += 1
+                
+                features.append(video_features.squeeze(0))
+                labels.append(label)
+                
+                # Update progress
+                processed_count += 1
+                if processed_count % 50 == 0:
+                    print(f"\rProcessed {processed_count}/{total_files} files | "
+                          f"Skipped: {skipped_files}", end="", flush=True)
+                    print("\nCurrent emotion distribution:")
+                    for emotion, count in emotion_counts.items():
+                        print(f"{emotion}: {count}")
+                    self.cleanup_memory()
+                    
+            except Exception as e:
+                print(f"\nError processing {file_path}: {str(e)}")
+                skipped_files += 1
+        
+        print(f"\nProcessing complete!")
+        print(f"Total files processed: {processed_count}")
+        print(f"Files skipped: {skipped_files}")
+        print(f"Success rate: {(processed_count / (processed_count + skipped_files)) * 100:.2f}%")
+        print("\nFinal emotion distribution:")
+        for emotion, count in emotion_counts.items():
+            print(f"{emotion}: {count}")
+
+        if not features:
+            raise ValueError("No video files were successfully processed")
+
+        print("\nPreparing final dataset...")
+        
+        try:
+            # Convert to tensors
+            features_tensor = torch.stack(features)
+            labels_tensor = torch.tensor(labels, dtype=torch.long)
+            
+            # Verify data
+            unique_labels = torch.unique(labels_tensor)
+            print("\nUnique labels in dataset:", unique_labels.tolist())
+            print("\nLabel counts:")
+            for label in unique_labels:
+                count = (labels_tensor == label).sum().item()
+                emotion = [k for k, v in self.emotion_to_idx.items() if v == label.item()][0]
+                print(f"{emotion} (label {label.item()}): {count}")
+            
+            # Normalize features
+            features_mean = features_tensor.mean(dim=0, keepdim=True)
+            features_std = features_tensor.std(dim=0, keepdim=True)
+            features_tensor = (features_tensor - features_mean) / (features_std + 1e-6)
+            
+            print(f"\nDataset shape: {features_tensor.shape}")
+            print(f"Labels shape: {labels_tensor.shape}")
+            print(f"Number of emotion classes: {len(self.emotion_to_idx)}")
+            
+            # Verify tensor device placement
+            features_tensor = features_tensor.to(self.device)
+            labels_tensor = labels_tensor.to(self.device)
+            print(f"Features device: {features_tensor.device}")
+            print(f"Labels device: {labels_tensor.device}")
             
             return features_tensor, labels_tensor
             
@@ -151,7 +263,7 @@ class DataPreprocessor:
             raise
 
     def get_emotion_mapping(self) -> Dict[str, int]:
-        """Return the emotion to index mapping."""
+        """Return the current emotion to index mapping."""
         return self.emotion_to_idx
 
     def get_emotion_labels(self) -> List[str]:

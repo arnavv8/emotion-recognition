@@ -1,19 +1,45 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { Smile } from 'lucide-react';
 import { MediaCard } from './components/MediaCard';
 import { EmotionDisplay } from './components/EmotionDisplay';
 import { MediaHistory } from './components/MediaHistory';
-import { PredictionResult, StoredMedia } from './types';
+import { AuthForm } from './components/AuthForm';
+import { useAuth } from './components/AuthProvider';
+import { PredictionResult, StoredMedia, Recording } from './types';
+import { uploadRecording, getRecordings, deleteRecording } from './lib/storage';
 
 export default function App() {
+  const { user } = useAuth();
   const [prediction, setPrediction] = useState<PredictionResult | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [mediaHistory, setMediaHistory] = useState<StoredMedia[]>([]);
+  const [recordings, setRecordings] = useState<Recording[]>([]);
   const [error, setError] = useState<string | null>(null);
   const modalRef = useRef<HTMLDialogElement>(null);
   const [selectedMedia, setSelectedMedia] = useState<StoredMedia | null>(null);
 
+  useEffect(() => {
+    if (user) {
+      loadRecordings();
+    }
+  }, [user]);
+
+  const loadRecordings = async () => {
+    try {
+      const data = await getRecordings();
+      setRecordings(data);
+    } catch (error) {
+      console.error('Error loading recordings:', error);
+      setError('Failed to load recordings');
+    }
+  };
+
   const handleMediaSubmit = async (media: File | Blob, type: 'audio' | 'video') => {
+    if (!user) {
+      setError('Please sign in to save recordings');
+      return;
+    }
+
     setIsLoading(true);
     setError(null);
     
@@ -38,11 +64,24 @@ export default function App() {
       
       setPrediction(result);
       
+      // Upload to Supabase
+      const filename = media instanceof File ? media.name : `${type}_recording_${Date.now()}`;
+      await uploadRecording(
+        media,
+        filename,
+        type,
+        result.emotion,
+        result.confidence
+      );
+
+      // Refresh recordings list
+      await loadRecordings();
+      
       const newMedia: StoredMedia = {
         id: Date.now().toString(),
         type,
         blob: media,
-        filename: media instanceof File ? media.name : `${type}_recording_${Date.now()}`,
+        filename,
         timestamp: new Date(),
         prediction: result,
       };
@@ -88,24 +127,38 @@ export default function App() {
     }
   };
 
-  const playMedia = (media: StoredMedia) => {
-    setSelectedMedia(media);
-    modalRef.current?.showModal();
+  const handleDelete = async (id: string) => {
+    try {
+      await deleteRecording(id);
+      await loadRecordings();
+      setMediaHistory(prev => prev.filter(media => media.id !== id));
+    } catch (error) {
+      console.error('Error deleting recording:', error);
+      setError('Failed to delete recording');
+    }
   };
 
-  const deleteMedia = (id: string) => {
-    setMediaHistory(prev => prev.filter(media => media.id !== id));
-  };
+  if (!user) {
+    return <AuthForm />;
+  }
 
   return (
     <div className="min-h-screen bg-gray-100">
       <header className="bg-white shadow-md">
         <div className="max-w-7xl mx-auto px-4 py-6 sm:px-6 lg:px-8">
-          <div className="flex items-center gap-3">
-            <Smile className="w-8 h-8 text-blue-500" />
-            <h1 className="text-3xl font-bold text-gray-900">
-              Emotion Recognition
-            </h1>
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <Smile className="w-8 h-8 text-blue-500" />
+              <h1 className="text-3xl font-bold text-gray-900">
+                Emotion Recognition
+              </h1>
+            </div>
+            <button
+              onClick={() => useAuth().signOut()}
+              className="text-gray-600 hover:text-gray-900"
+            >
+              Sign out
+            </button>
           </div>
         </div>
       </header>
@@ -134,52 +187,19 @@ export default function App() {
         <EmotionDisplay prediction={prediction} isLoading={isLoading} />
         
         <MediaHistory
-          mediaList={mediaHistory}
-          onPlay={playMedia}
-          onDelete={deleteMedia}
+          mediaList={recordings.map(recording => ({
+            id: recording.id,
+            type: recording.type,
+            filename: recording.filename,
+            timestamp: new Date(recording.created_at),
+            prediction: recording.emotion ? {
+              emotion: recording.emotion as any,
+              confidence: recording.confidence || 0
+            } : undefined
+          }))}
+          onDelete={handleDelete}
         />
       </main>
-
-      <dialog
-        ref={modalRef}
-        className="p-4 rounded-lg shadow-xl backdrop:bg-black backdrop:bg-opacity-50"
-        onClick={(e) => {
-          if (e.target === modalRef.current) {
-            modalRef.current.close();
-          }
-        }}
-      >
-        {selectedMedia && (
-          <div className="min-w-[320px]">
-            <div className="flex justify-between items-center mb-4">
-              <h3 className="text-xl font-semibold">
-                {selectedMedia.type === 'audio' ? 'Audio' : 'Video'} Playback
-              </h3>
-              <button
-                onClick={() => modalRef.current?.close()}
-                className="text-gray-500 hover:text-gray-700"
-              >
-                ×
-              </button>
-            </div>
-            {selectedMedia.type === 'audio' ? (
-              <audio
-                src={URL.createObjectURL(selectedMedia.blob)}
-                controls
-                className="w-full"
-                autoPlay
-              />
-            ) : (
-              <video
-                src={URL.createObjectURL(selectedMedia.blob)}
-                controls
-                className="w-full"
-                autoPlay
-              />
-            )}
-          </div>
-        )}
-      </dialog>
     </div>
   );
 }

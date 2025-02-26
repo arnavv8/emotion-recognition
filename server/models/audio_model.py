@@ -7,52 +7,80 @@ class AudioEmotionModel(nn.Module):
         super().__init__()
         
         # Input shape: [batch_size, 1, n_mfcc * 3, time_steps]
-        # n_mfcc * 3 because we have MFCC + delta + delta-delta
         
-        # CNN layers
-        self.conv1 = nn.Conv2d(1, 64, 3, padding=1)
-        self.conv2 = nn.Conv2d(64, 128, 3, padding=1)
-        self.conv3 = nn.Conv2d(128, 256, 3, padding=1)
+        # First conv block
+        self.conv1 = nn.Sequential(
+            nn.Conv2d(1, 64, kernel_size=3, padding=1),
+            nn.BatchNorm2d(64),
+            nn.ReLU(),
+            nn.MaxPool2d(2),
+            nn.Dropout(0.2)
+        )
         
-        # Batch normalization
-        self.bn1 = nn.BatchNorm2d(64)
-        self.bn2 = nn.BatchNorm2d(128)
-        self.bn3 = nn.BatchNorm2d(256)
+        # Second conv block
+        self.conv2 = nn.Sequential(
+            nn.Conv2d(64, 128, kernel_size=3, padding=1),
+            nn.BatchNorm2d(128),
+            nn.ReLU(),
+            nn.MaxPool2d(2),
+            nn.Dropout(0.3)
+        )
         
-        # Pooling and other layers
-        self.pool = nn.MaxPool2d(2)
-        self.dropout = nn.Dropout(0.3)
-        self.relu = nn.ReLU()
-        self.adaptive_pool = nn.AdaptiveAvgPool2d((4, 4))  # Fixed output size
+        # Third conv block
+        self.conv3 = nn.Sequential(
+            nn.Conv2d(128, 256, kernel_size=3, padding=1),
+            nn.BatchNorm2d(256),
+            nn.ReLU(),
+            nn.MaxPool2d(2),
+            nn.Dropout(0.4)
+        )
+        
+        # Adaptive pooling to handle variable input sizes
+        self.adaptive_pool = nn.AdaptiveAvgPool2d((4, 4))
         
         # Fully connected layers
-        self.fc1 = nn.Linear(256 * 4 * 4, 512)
-        self.fc2 = nn.Linear(512, num_emotions)
+        self.fc = nn.Sequential(
+            nn.Linear(256 * 4 * 4, 512),
+            nn.ReLU(),
+            nn.Dropout(0.5),
+            nn.Linear(512, 256),
+            nn.ReLU(),
+            nn.Dropout(0.5),
+            nn.Linear(256, num_emotions)
+        )
         
+        # Initialize weights
+        self.apply(self._init_weights)
+    
+    def _init_weights(self, module):
+        if isinstance(module, nn.Conv2d):
+            nn.init.kaiming_normal_(module.weight, mode='fan_out', nonlinearity='relu')
+            if module.bias is not None:
+                nn.init.constant_(module.bias, 0)
+        elif isinstance(module, nn.BatchNorm2d):
+            nn.init.constant_(module.weight, 1)
+            nn.init.constant_(module.bias, 0)
+        elif isinstance(module, nn.Linear):
+            nn.init.kaiming_normal_(module.weight)
+            nn.init.constant_(module.bias, 0)
+    
     def forward(self, x):
         # Add channel dimension if not present
         if len(x.shape) == 3:
             x = x.unsqueeze(1)
-            
-        # CNN layers
-        x = self.relu(self.bn1(self.conv1(x)))
-        x = self.pool(x)
-        x = self.dropout(x)
         
-        x = self.relu(self.bn2(self.conv2(x)))
-        x = self.pool(x)
-        x = self.dropout(x)
+        # Convolutional blocks
+        x = self.conv1(x)
+        x = self.conv2(x)
+        x = self.conv3(x)
         
-        x = self.relu(self.bn3(self.conv3(x)))
-        x = self.adaptive_pool(x)  # Get fixed size output
-        x = self.dropout(x)
+        # Adaptive pooling
+        x = self.adaptive_pool(x)
         
         # Flatten
         x = x.view(x.size(0), -1)
         
         # Fully connected layers
-        x = self.relu(self.fc1(x))
-        x = self.dropout(x)
-        x = self.fc2(x)
+        x = self.fc(x)
         
         return x
