@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Smile } from 'lucide-react';
+import { Smile, BarChart } from 'lucide-react';
 import { MediaCard } from './components/MediaCard';
 import { EmotionDisplay } from './components/EmotionDisplay';
 import { MediaHistory } from './components/MediaHistory';
@@ -9,20 +9,35 @@ import { PredictionResult, StoredMedia, Recording } from './types';
 import { uploadRecording, getRecordings, deleteRecording } from './lib/storage';
 
 export default function App() {
-  const { user } = useAuth();
+  const auth = useAuth();
+  const { user } = auth;
   const [prediction, setPrediction] = useState<PredictionResult | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [mediaHistory, setMediaHistory] = useState<StoredMedia[]>([]);
   const [recordings, setRecordings] = useState<Recording[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [modelStatus, setModelStatus] = useState<any>(null);
   const modalRef = useRef<HTMLDialogElement>(null);
   const [selectedMedia, setSelectedMedia] = useState<StoredMedia | null>(null);
 
   useEffect(() => {
     if (user) {
       loadRecordings();
+      checkModelStatus();
     }
   }, [user]);
+
+  const checkModelStatus = async () => {
+    try {
+      const response = await fetch('http://localhost:5000/status');
+      if (response.ok) {
+        const data = await response.json();
+        setModelStatus(data);
+      }
+    } catch (error) {
+      console.error('Error checking model status:', error);
+    }
+  };
 
   const loadRecordings = async () => {
     try {
@@ -34,7 +49,7 @@ export default function App() {
     }
   };
 
-  const handleMediaSubmit = async (media: File | Blob, type: 'audio' | 'video') => {
+  const handleMediaSubmit = async (media: File | Blob, dataset: string = 'cremad') => {
     if (!user) {
       setError('Please sign in to save recordings');
       return;
@@ -45,7 +60,10 @@ export default function App() {
     
     const formData = new FormData();
     formData.append('file', media);
-    formData.append('type', type);
+    formData.append('type', media instanceof File ? 
+      (media.type.startsWith('audio') ? 'audio' : 'video') : 
+      (media.type.includes('audio') ? 'audio' : 'video'));
+    formData.append('dataset', dataset);
     
     try {
       const response = await fetch('http://localhost:5000/predict', {
@@ -54,7 +72,8 @@ export default function App() {
       });
       
       if (!response.ok) {
-        throw new Error(`Server returned ${response.status}: ${response.statusText}`);
+        const errorData = await response.json();
+        throw new Error(errorData.error || `Server returned ${response.status}: ${response.statusText}`);
       }
       
       const result = await response.json();
@@ -65,11 +84,11 @@ export default function App() {
       setPrediction(result);
       
       // Upload to Supabase
-      const filename = media instanceof File ? media.name : `${type}_recording_${Date.now()}`;
+      const filename = media instanceof File ? media.name : `${media.type.includes('audio') ? 'audio' : 'video'}_recording_${Date.now()}`;
       await uploadRecording(
         media,
         filename,
-        type,
+        media.type.includes('audio') ? 'audio' : 'video',
         result.emotion,
         result.confidence
       );
@@ -79,7 +98,7 @@ export default function App() {
       
       const newMedia: StoredMedia = {
         id: Date.now().toString(),
-        type,
+        type: media.type.includes('audio') ? 'audio' : 'video',
         blob: media,
         filename,
         timestamp: new Date(),
@@ -138,6 +157,32 @@ export default function App() {
     }
   };
 
+  const switchDataset = async (dataset: string) => {
+    try {
+      const response = await fetch('http://localhost:5000/switch-dataset', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ dataset }),
+      });
+      
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || `Failed to switch dataset`);
+      }
+      
+      await checkModelStatus();
+    } catch (error) {
+      console.error('Error switching dataset:', error);
+      setError(error instanceof Error ? error.message : 'Failed to switch dataset');
+    }
+  };
+
+  const handleSignOut = () => {
+    auth.signOut();
+  };
+
   if (!user) {
     return <AuthForm />;
   }
@@ -153,12 +198,19 @@ export default function App() {
                 Emotion Recognition
               </h1>
             </div>
-            <button
-              onClick={() => useAuth().signOut()}
-              className="text-gray-600 hover:text-gray-900"
-            >
-              Sign out
-            </button>
+            <div className="flex items-center gap-4">
+              {modelStatus && (
+                <div className="text-sm text-gray-600">
+                  Active dataset: <span className="font-medium">{modelStatus.activeDataset?.toUpperCase()}</span>
+                </div>
+              )}
+              <button
+                onClick={handleSignOut}
+                className="text-gray-600 hover:text-gray-900"
+              >
+                Sign out
+              </button>
+            </div>
           </div>
         </div>
       </header>
@@ -173,23 +225,50 @@ export default function App() {
         <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-8">
           <MediaCard
             type="audio"
-            onFileSelect={(file) => handleMediaSubmit(file, 'audio')}
-            onRecordingComplete={(blob) => handleMediaSubmit(blob, 'audio')}
+            onFileSelect={(file, dataset) => handleMediaSubmit(file, dataset)}
+            onRecordingComplete={(blob, dataset) => handleMediaSubmit(blob, dataset)}
           />
           <MediaCard
             type="video"
-            onFileSelect={(file) => handleMediaSubmit(file, 'video')}
-            onRecordingComplete={(blob) => handleMediaSubmit(blob, 'video')}
+            onFileSelect={(file, dataset) => handleMediaSubmit(file, dataset)}
+            onRecordingComplete={(blob, dataset) => handleMediaSubmit(blob, dataset)}
             onLivePredict={handleLivePredict}
           />
         </div>
 
         <EmotionDisplay prediction={prediction} isLoading={isLoading} />
         
+        {modelStatus && modelStatus.modelPerformance && Object.keys(modelStatus.modelPerformance).length > 0 && (
+          <div className="bg-white rounded-lg shadow-lg p-6 mt-8">
+            <div className="flex items-center gap-2 mb-4">
+              <BarChart className="w-5 h-5 text-blue-500" />
+              <h2 className="text-2xl font-bold text-gray-800">Model Performance</h2>
+            </div>
+            
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              {Object.entries(modelStatus.modelPerformance).map(([key, metrics]: [string, any]) => (
+                <div key={key} className="bg-gray-50 p-4 rounded-lg">
+                  <h3 className="font-medium text-gray-800 mb-2">{key.replace('_', ' ').toUpperCase()}</h3>
+                  <div className="space-y-1 text-sm">
+                    <p>Accuracy: {(metrics.accuracy * 100).toFixed(2)}%</p>
+                    {metrics.val_accuracy && (
+                      <p>Validation Accuracy: {(metrics.val_accuracy * 100).toFixed(2)}%</p>
+                    )}
+                    {metrics.val_loss && (
+                      <p>Validation Loss: {metrics.val_loss.toFixed(4)}</p>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+        
         <MediaHistory
           mediaList={recordings.map(recording => ({
             id: recording.id,
             type: recording.type,
+            blob: new Blob(), // Add the blob property here
             filename: recording.filename,
             timestamp: new Date(recording.created_at),
             prediction: recording.emotion ? {

@@ -4,11 +4,10 @@ import { StoredMedia } from '../types';
 
 interface Props {
   mediaList: StoredMedia[];
-  onPlay: (media: StoredMedia) => void;
   onDelete: (id: string) => void;
 }
 
-export function MediaHistory({ mediaList, onPlay, onDelete }: Props) {
+export function MediaHistory({ mediaList, onDelete }: Props) {
   return (
     <div className="bg-white rounded-lg shadow-lg p-6 mt-8">
       <h2 className="text-2xl font-bold mb-4 text-gray-800">Recording History</h2>
@@ -44,13 +43,6 @@ export function MediaHistory({ mediaList, onPlay, onDelete }: Props) {
               </div>
               
               <div className="flex items-center gap-2">
-                <button
-                  onClick={() => onPlay(media)}
-                  className="p-2 rounded-full hover:bg-gray-200 transition-colors"
-                  title="Play"
-                >
-                  <Play size={20} />
-                </button>
                 <button
                   onClick={() => onDelete(media.id)}
                   className="p-2 rounded-full hover:bg-gray-200 text-red-500 transition-colors"

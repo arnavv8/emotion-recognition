@@ -1,0 +1,12 @@
+{
+  "audio_ravdess": {
+    "accuracy": 0.16203703703703703,
+    "val_accuracy": 0.2037037037037037,
+    "val_loss": 2.1284195355006625
+  },
+  "audio_cremad": {
+    "accuracy": 0.170993733213966,
+    "val_accuracy": 0.17114695340501793,
+    "val_loss": NaN
+  }
+}

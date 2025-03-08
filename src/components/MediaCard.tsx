@@ -1,11 +1,11 @@
 import React, { useRef, useState, useEffect } from 'react';
-import { Upload, Mic, Video, StopCircle, Play, Pause } from 'lucide-react';
+import { Upload, Mic, Video, StopCircle, Play, Pause, Settings } from 'lucide-react';
 import { MediaRecorderProps, PredictionResult } from '../types';
 
 interface Props {
   type: 'audio' | 'video';
-  onFileSelect: (file: File) => void;
-  onRecordingComplete: (blob: Blob) => void;
+  onFileSelect: (file: File, dataset?: string) => void;
+  onRecordingComplete: (blob: Blob, dataset?: string) => void;
   onLivePredict?: (frame: ImageData) => Promise<PredictionResult>;
 }
 
@@ -16,6 +16,8 @@ export function MediaCard({ type, onFileSelect, onRecordingComplete, onLivePredi
   const [isPlaying, setIsPlaying] = useState(false);
   const [livePrediction, setLivePrediction] = useState<PredictionResult | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [selectedDataset, setSelectedDataset] = useState<string>('cremad');
+  const [showSettings, setShowSettings] = useState(false);
 
   const mediaRecorder = useRef<MediaRecorder | null>(null);
   const chunks = useRef<Blob[]>([]);
@@ -72,7 +74,7 @@ export function MediaCard({ type, onFileSelect, onRecordingComplete, onLivePredi
           const blob = new Blob(chunks.current, {
             type: type === 'video' ? 'video/webm' : 'audio/webm',
           });
-          onRecordingComplete(blob);
+          onRecordingComplete(blob, selectedDataset);
           
           if (type === 'audio') {
             const url = URL.createObjectURL(blob);
@@ -169,7 +171,7 @@ export function MediaCard({ type, onFileSelect, onRecordingComplete, onLivePredi
     const file = e.target.files?.[0];
     if (file) {
       try {
-        onFileSelect(file);
+        onFileSelect(file, selectedDataset);
       } catch (err) {
         setError('Failed to process selected file');
         console.error('File processing error:', err);
@@ -177,11 +179,59 @@ export function MediaCard({ type, onFileSelect, onRecordingComplete, onLivePredi
     }
   };
 
+  const toggleSettings = () => {
+    setShowSettings(!showSettings);
+  };
+
   return (
     <div className="bg-white rounded-lg shadow-lg p-6 w-full max-w-md">
-      <h2 className="text-2xl font-bold mb-4 text-gray-800">
-        {type === 'audio' ? 'Audio Input' : 'Video Input'}
-      </h2>
+      <div className="flex justify-between items-center mb-4">
+        <h2 className="text-2xl font-bold text-gray-800">
+          {type === 'audio' ? 'Audio Input' : 'Video Input'}
+        </h2>
+        <button 
+          onClick={toggleSettings}
+          className="p-2 rounded-full hover:bg-gray-100"
+          title="Settings"
+        >
+          <Settings size={20} />
+        </button>
+      </div>
+      
+      {showSettings && (
+        <div className="mb-4 p-4 bg-gray-50 rounded-lg">
+          <h3 className="font-medium mb-2">Dataset Selection</h3>
+          <div className="flex gap-2">
+            <label className="flex items-center">
+              <input
+                type="radio"
+                name={`dataset-${type}`}
+                value="ravdess"
+                checked={selectedDataset === 'ravdess'}
+                onChange={() => setSelectedDataset('ravdess')}
+                className="mr-2"
+              />
+              RAVDESS
+            </label>
+            <label className="flex items-center">
+              <input
+                type="radio"
+                name={`dataset-${type}`}
+                value="cremad"
+                checked={selectedDataset === 'cremad'}
+                onChange={() => setSelectedDataset('cremad')}
+                className="mr-2"
+              />
+              CREMA-D
+            </label>
+          </div>
+          {type === 'video' && selectedDataset === 'ravdess' && (
+            <p className="text-yellow-600 text-sm mt-2">
+              Note: Video processing is only available for CREMA-D dataset
+            </p>
+          )}
+        </div>
+      )}
       
       {error && (
         <div className="mb-4 p-3 bg-red-100 text-red-700 rounded-lg">
@@ -215,6 +265,7 @@ export function MediaCard({ type, onFileSelect, onRecordingComplete, onLivePredi
               : 'bg-green-500 hover:bg-green-600'
           } text-white`}
           type="button"
+          disabled={type === 'video' && selectedDataset === 'ravdess'}
         >
           {isRecording ? (
             <>
