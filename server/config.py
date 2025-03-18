@@ -11,7 +11,7 @@ class Config:
     VIDEO_MODEL_CREMAD_PATH = os.path.join(os.path.dirname(__file__), 'models/video_model_cremad.pth')
     
     # Default model selection (can be changed via environment variable)
-    ACTIVE_DATASET = os.environ.get('EMOTION_DATASET', 'cremad')  # 'ravdess' or 'cremad'
+    ACTIVE_DATASET = os.environ.get('EMOTION_DATASET', 'ravdess')  # 'ravdess' or 'cremad'
     
     # API settings
     HOST = '0.0.0.0'
@@ -27,7 +27,7 @@ class Config:
     AUDIO_SAMPLE_RATE = 22050
     N_MFCC = 40
     N_MELS = 128
-    N_FFT = 2048
+    N_FFT = 1024
     WINDOW_SIZE = 0.025  # in seconds
     HOP_LENGTH = 0.010   # in seconds
     MAX_TIME_LENGTH = 200  # Maximum number of time steps
@@ -45,20 +45,20 @@ class Config:
     # Training settings
     BATCH_SIZE = 32
     NUM_EPOCHS = 100
-    LEARNING_RATE = 0.001
-    WEIGHT_DECAY = 1e-4
-    EARLY_STOPPING_PATIENCE = 15
+    LEARNING_RATE = 0.0001
+    WEIGHT_DECAY = 1e-5
+    EARLY_STOPPING_PATIENCE = 20
     
     # Memory management
-    NUM_WORKERS = 0  # Disabled multiprocessing to avoid CUDA issues
+    NUM_WORKERS = 4
     PIN_MEMORY = True
     
     # Gradient clipping
-    GRADIENT_CLIP_VALUE = 1.0
+    GRADIENT_CLIP_VALUE = 5.0
     CLASS_WEIGHTS_ENABLED = True
     
     # Learning rate scheduler settings
-    LR_SCHEDULER_FACTOR = 0.5
+    LR_SCHEDULER_FACTOR = 0.1
     LR_SCHEDULER_PATIENCE = 5
     LR_SCHEDULER_MIN_LR = 1e-6
     

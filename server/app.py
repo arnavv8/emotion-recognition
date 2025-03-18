@@ -54,7 +54,7 @@ audio_processor = AudioProcessor()
 video_processor = VideoProcessor()
 
 # Load model metrics if available
-metrics_file = os.path.join(os.path.dirname(__file__), 'metrics', 'model_metrics.json')
+metrics_file = os.path.join(os.path.dirname(__file__), 'metrics', 'audio_ravdess_classification_report.json')
 model_metrics = {}
 if os.path.exists(metrics_file):
     try:
@@ -68,7 +68,7 @@ try:
     # Load RAVDESS audio model
     if os.path.exists(Config.AUDIO_MODEL_RAVDESS_PATH):
         audio_model_ravdess = AudioEmotionModel(num_emotions=8)  # RAVDESS has 8 emotions
-        audio_model_ravdess.load_state_dict(torch.load(Config.AUDIO_MODEL_RAVDESS_PATH, map_location='cpu'))
+        audio_model_ravdess.load_state_dict(torch.load(Config.AUDIO_MODEL_RAVDESS_PATH, map_location='cpu', weights_only=True))
         audio_model_ravdess.eval()
         print("RAVDESS audio model loaded successfully")
     else:
@@ -77,7 +77,7 @@ try:
     # Load CREMA-D audio model
     if os.path.exists(Config.AUDIO_MODEL_CREMAD_PATH):
         audio_model_cremad = AudioEmotionModel(num_emotions=6)  # CREMA-D has 6 emotions
-        audio_model_cremad.load_state_dict(torch.load(Config.AUDIO_MODEL_CREMAD_PATH, map_location='cpu'))
+        audio_model_cremad.load_state_dict(torch.load(Config.AUDIO_MODEL_CREMAD_PATH, map_location='cpu', weights_only=True))
         audio_model_cremad.eval()
         print("CREMA-D audio model loaded successfully")
     else:

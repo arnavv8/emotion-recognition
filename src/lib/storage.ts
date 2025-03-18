@@ -8,27 +8,33 @@ export async function uploadRecording(
   emotion: string | null,
   confidence: number | null
 ): Promise<Recording> {
-  const user = supabase.auth.getUser();
-  if (!user) {
+  // ✅ Ensure user is authenticated
+  const { data: userData, error: authError } = await supabase.auth.getUser();
+  if (authError || !userData?.user) {
     throw new Error('User not authenticated');
   }
+  
+  const userId = userData.user.id;
 
-  // Upload file to Supabase Storage
+  // ✅ Ensure unique filename with timestamp
   const fileExt = type === 'audio' ? 'webm' : 'mp4';
   const filePath = `${type}s/${Date.now()}_${filename}.${fileExt}`;
-  
+
+  // ✅ Upload file to Supabase Storage
   const { error: uploadError } = await supabase.storage
     .from('recordings')
     .upload(filePath, file);
 
   if (uploadError) {
+    console.error("Upload failed:", uploadError.message);
     throw uploadError;
   }
 
-  // Create database record
+  // ✅ Insert record into database
   const { data, error: dbError } = await supabase
     .from('recordings')
     .insert({
+      user_id: userId,  // ✅ Track uploader
       type,
       filename,
       file_path: filePath,
@@ -39,6 +45,7 @@ export async function uploadRecording(
     .single();
 
   if (dbError) {
+    console.error("Database insert failed:", dbError.message);
     throw dbError;
   }
 
@@ -52,6 +59,7 @@ export async function getRecordings(): Promise<Recording[]> {
     .order('created_at', { ascending: false });
 
   if (error) {
+    console.error("Fetch failed:", error.message);
     throw error;
   }
 
@@ -59,32 +67,37 @@ export async function getRecordings(): Promise<Recording[]> {
 }
 
 export async function deleteRecording(id: string): Promise<void> {
+  // ✅ Fetch recording details
   const { data: recording, error: fetchError } = await supabase
     .from('recordings')
     .select('file_path')
     .eq('id', id)
     .single();
 
-  if (fetchError) {
-    throw fetchError;
+  if (fetchError || !recording) {
+    throw new Error('Recording not found');
   }
 
-  // Delete file from storage
-  const { error: storageError } = await supabase.storage
-    .from('recordings')
-    .remove([recording.file_path]);
+  // ✅ Delete file from storage
+  if (recording.file_path) {
+    const { error: storageError } = await supabase.storage
+      .from('recordings')
+      .remove([recording.file_path]);
 
-  if (storageError) {
-    throw storageError;
+    if (storageError) {
+      console.error("Storage deletion failed:", storageError.message);
+      throw storageError;
+    }
   }
 
-  // Delete database record
+  // ✅ Delete record from database
   const { error: dbError } = await supabase
     .from('recordings')
     .delete()
     .eq('id', id);
 
   if (dbError) {
+    console.error("Database deletion failed:", dbError.message);
     throw dbError;
   }
 }
